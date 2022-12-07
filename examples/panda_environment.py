@@ -92,11 +92,11 @@ if __name__ == '__main__':
     # Construct cost function
     cost_func_list = []
 
-    cost_prior_multigoal = CostGP(
+    cost_prior = CostGP(
         n_dof, traj_len, start_state, dt,
         cost_sigmas, tensor_args
     )
-    cost_func_list += [cost_prior_multigoal.eval]
+    cost_func_list += [cost_prior.eval]
     cost_coll = CostCollision(n_dof, traj_len, sigma_coll=sigma_coll)
     cost_func_list += [cost_coll.eval]
     cost_goal = CostGoal(n_dof, traj_len, sigma_goal=sigma_goal)
