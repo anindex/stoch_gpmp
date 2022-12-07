@@ -20,16 +20,14 @@ class StochGPMP:
             temp=1.,
             start_state=None,
             multi_goal_states=None,
-            sigma_start=None,
+            cost_func=None,
             sigma_start_init=None,
             sigma_start_sample=None,
-            sigma_goal=None,
             sigma_goal_init=None,
             sigma_goal_sample=None,
-            sigma_gp=None,
+            sigma_goal=None,
             sigma_gp_init=None,
             sigma_gp_sample=None,
-            sigma_obst=None,
             seed=0,
             tensor_args=None,
     ):
@@ -56,18 +54,16 @@ class StochGPMP:
         self.opt_iters = opt_iters
         self.step_size = step_size
         self.temp = temp
-        self.sigma_start = sigma_start
         self.sigma_start_init = sigma_start_init
         self.sigma_start_sample = sigma_start_sample
         self.sigma_goal = sigma_goal
         self.sigma_goal_init = sigma_goal_init
         self.sigma_goal_sample = sigma_goal_sample
-        self.sigma_gp = sigma_gp
         self.sigma_gp_init = sigma_gp_init
         self.sigma_gp_sample = sigma_gp_sample
-        self.sigma_obst = sigma_obst
         self.start_states = start_state # position + velocity
         self.multi_goal_states = multi_goal_states # position + velocity
+        self.cost_func = cost_func
 
         self._mean = None
         self._weights = None
@@ -78,20 +74,6 @@ class StochGPMP:
     def set_prior_factors(self):
 
         #========= Cost factors ===============
-        self.start_prior = UnaryFactor(
-            self.d_state_opt,
-            self.sigma_start,
-            self.start_states,
-            self.tensor_args,
-        )
-
-        self.gp_prior = GPFactor(
-            self.n_dof,
-            self.sigma_gp,
-            self.dt,
-            self.traj_len - 1,
-            self.tensor_args,
-        )
 
         self.multi_goal_prior = []
         if self.goal_directed:
@@ -104,11 +86,6 @@ class StochGPMP:
                         self.tensor_args,
                     )
                 )
-
-        self.obst_factor = FieldFactor(
-            self.n_dof,
-            self.sigma_obst,
-        )
 
         #========= Initialization factors ===============
         self.start_prior_init = UnaryFactor(
@@ -197,10 +174,10 @@ class StochGPMP:
     ):
 
         if start_state is not None:
-            self.start_state = start_state.clone()
+            self.start_state = start_state.detach().clone()
 
         if multi_goal_states is not None:
-            self.multi_goal_states = multi_goal_states.clone()
+            self.multi_goal_states = multi_goal_states.detach().clone()
 
         self.set_prior_factors()
 
@@ -228,39 +205,12 @@ class StochGPMP:
         self.state_samples = self._sample_dist.sample(self.num_samples).to(**self.tensor_args)
 
     def _get_costs(self, observation):
-        x = self.state_samples.reshape(-1, self.traj_len, self.d_state_opt)
 
-        # Start prior
-        err_p = self.start_prior.get_error(x[:, [0]], calc_jacobian=False)
-        w_mat = self.start_prior.K
-        start_costs = err_p @ w_mat.unsqueeze(0) @ err_p.transpose(1, 2)
-        start_costs = start_costs.squeeze()
-
-        # GP prior
-        err_gp = self.gp_prior.get_error(x, calc_jacobian=False)
-        w_mat = self.gp_prior.Q_inv[0] # repeated Q_inv
-        w_mat = w_mat.reshape(1, 1, self.d_state_opt, self.d_state_opt)
-        gp_costs = err_gp.transpose(2, 3) @ w_mat @ err_gp
-        gp_costs = gp_costs.sum(1)
-        gp_costs = gp_costs.squeeze()
-
-        costs = start_costs + gp_costs
-
-        # Obstacle cost
-        if 'obst_map_func' in observation:
-            err_obst = self.obst_factor.get_error(
-                x[:, 1:, :self.n_dof],
-                observation['obst_map_func'],
-                observation.get('FK', None),  # NOTE(an): Add differentiable FK here
-                calc_jacobian=False,  # NOTE(an): no need for grads in StochGPMP
-            )
-            w_mat = self.obst_factor.K
-            obst_costs = w_mat * err_obst.sum(1)
-            costs += obst_costs
+        costs = self.cost_func(self.state_samples, observation)
 
         # Goal prior
         if self.goal_directed:
-            x = x.reshape(self.num_goals, self.num_particles_per_goal * self.num_samples, self.traj_len, self.d_state_opt)
+            x = self.state_samples.reshape(self.num_goals, self.num_particles_per_goal * self.num_samples, self.traj_len, self.d_state_opt)
             costs = costs.reshape(self.num_goals, self.num_particles_per_goal * self.num_samples)
             for i in range(self.num_goals):
                 err_g = self.multi_goal_prior[i].get_error(x[i, :, [-1]], calc_jacobian=False)
@@ -272,9 +222,9 @@ class StochGPMP:
         costs = costs.reshape(self.num_particles, self.num_samples)
 
         # Add cost from importance-sampling ratio
-        # V  = self.state_samples.view(-1, self.num_samples, self.traj_len * self.d_state_opt)  # flatten trajectories
-        # U = self.particle_means.view(-1, 1, self.traj_len * self.d_state_opt)
-        # costs += self.temp * (V @ self.Sigma_inv @ U.transpose(1, 2)).squeeze(2)
+        V  = self.state_samples.view(-1, self.num_samples, self.traj_len * self.d_state_opt)  # flatten trajectories
+        U = self.particle_means.view(-1, 1, self.traj_len * self.d_state_opt)
+        costs += self.temp * (V @ self.Sigma_inv @ U.transpose(1, 2)).squeeze(2)
         return costs
 
     def sample_and_eval(self, observation):

@@ -18,13 +18,14 @@ class FieldFactor:
             field_func,
             FK=None,
             calc_jacobian=True,
+            **observations
     ):
         batch, horizon = x_traj.shape[0], x_traj.shape[1]
 
         states = x_traj[:, :, :self.dof].reshape(-1, self.dof)
         if FK is not None:
             states = FK(states)
-        error = field_func(states).reshape(batch, horizon)
+        error = field_func(states, **observations).reshape(batch, horizon)
 
         if calc_jacobian:
             H = -1. * torch.autograd.grad(error.sum(), x_traj)[0]

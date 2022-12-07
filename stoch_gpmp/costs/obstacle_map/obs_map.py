@@ -131,7 +131,7 @@ class ObstacleMap:
         xy_grid = torch.stack((xv, yv), dim=2)
         return xy_grid.to(device)
 
-    def get_collisions(self, X):
+    def get_collisions(self, X, **kwargs):
         """
         Checks for collision in a batch of trajectories using the generated occupancy grid (i.e. obstacle map), and
         returns sum of collision costs for the entire batch.
