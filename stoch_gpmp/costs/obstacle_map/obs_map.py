@@ -169,3 +169,9 @@ class ObstacleMap:
             print(X_occ)
             print(X_occ.clamp(0, self.map.shape[0]-1))
         return collision_vals
+
+    def compute_cost(self, X, **kwargs):
+        return self.get_collisions(X, **kwargs)
+
+    def zero_grad(self):
+        pass

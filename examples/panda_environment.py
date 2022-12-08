@@ -3,46 +3,22 @@ import matplotlib.pyplot as plt
 import random
 import numpy as np
 import torch
+import pybullet as p
 
 from stoch_gpmp.planner import StochGPMP
 from stoch_gpmp.costs.cost_functions import CostCollision, CostComposite, CostGP, CostGoal
 
 from torch_kinematics_tree.models.robots import DifferentiableFrankaPanda
-from torch_planning_objectives.fields.collision_bodies import PandaSphereDistanceField
-from torch_planning_objectives.fields.distance_fields import SkeletonPointField
+from torch_planning_objectives.fields.distance_fields import EESE3DistanceField, LinkDistanceField, FloorDistanceField, LinkSelfDistanceField
 from torch_kinematics_tree.geometrics.frame import Frame
 from torch_kinematics_tree.geometrics.skeleton import get_skeleton_from_model
-
-
-def random_init_static_sphere(
-    scale_min: float,
-    scale_max: float,
-    base_position_min: np.ndarray,
-    base_position_max: np.ndarray,
-    base_offset: float,
-) -> tuple:
-    # Get scale
-    alpha_scale = np.random.uniform()
-    scale = alpha_scale * scale_min + (1 - alpha_scale) * scale_max
-
-    # Get position
-    idx = np.random.permutation([1, 0, 0])
-    base_position = np.random.rand(3)
-    alpha = np.random.rand(1)
-    base_position[idx == 1] = (
-        alpha * base_position_min[idx == 1] + (1 - alpha) * base_position_max[idx == 1]
-    )
-    base_position[:-1] *= np.random.randint(2, size=2) * 2 - 1
-
-    # Guarantee no collision at the beginning
-    base_position = np.sign(base_position) * np.clip(
-        np.abs(base_position), a_min=base_offset, a_max=base_position_max
-    )
-    # Guarantee no collision with the box
-    base_position = np.sign(base_position) * np.clip(
-        np.abs(base_position), a_min=base_offset, a_max=base_position_max
-    )
-    return scale, base_position
+from robot_envs.pybullet.utils import random_init_static_sphere
+from robot_envs.pybullet.panda import PandaEnv
+from torch_kinematics_tree.geometrics.spatial_vector import (
+    z_rot,
+    y_rot,
+    x_rot,
+)
 
 
 if __name__ == '__main__':
@@ -52,7 +28,7 @@ if __name__ == '__main__':
     tensor_args = {'device': device, 'dtype': torch.float64}
     seed = int(time.time())
     num_particles_per_goal = 10
-    num_samples = 1024
+    num_samples = 256
     num_obst = 5
     traj_len = 8
     dt = 0.01
@@ -62,47 +38,61 @@ if __name__ == '__main__':
     torch.manual_seed(seed)
 
     # world setup
-    target_pos = np.array([.3, .3, .3])
-    target_H = Frame(trans=torch.from_numpy(target_pos).to(**tensor_args), device=device).get_transform_matrix()  # set translation and orientation of target here
+    target_pos = np.array([.3, .4, .3])
+    target_rot = (z_rot(-torch.tensor(torch.pi)) @ y_rot(-torch.tensor(torch.pi))).to(**tensor_args)
+    target_frame = Frame(rot=target_rot, trans=torch.from_numpy(target_pos).to(**tensor_args), device=device)
+    target_quat = target_frame.get_quaternion().squeeze().cpu().numpy()  # [x, y, z, w]
+    target_H = target_frame.get_transform_matrix()  # set translation and orientation of target here
+
+    # FK
+    panda_fk = DifferentiableFrankaPanda(gripper=False, device=device)
+    # panda_fk.print_link_names()
+    n_dof = panda_fk._n_dofs
 
     # start & goal
     start_q = torch.tensor([0.012, -0.57, 0., -2.81, 0., 3.037, 0.741], **tensor_args)
     start_state = torch.cat((start_q, torch.zeros_like(start_q)))
-    multi_goal_states = None   # NOTE(an): can also put IK solution here
-
-    # FK
-    panda_fk = DifferentiableFrankaPanda(gripper=False, device=device)
-    n_dof = panda_fk._n_dofs
+    # use IK solution from pybullet
+    env = PandaEnv(
+        render=False,
+        realtime=False,
+        horizon=100000
+    )
+    env.reset()
+    q_goal = env.panda.solveInverseKinematics(target_pos, target_quat)[:n_dof]
+    q_goal = torch.tensor(q_goal, **tensor_args)
+    multi_goal_states = torch.cat([q_goal, torch.zeros_like(q_goal)]).unsqueeze(0)  # put IK solution
 
     ## Cost functions
-    panda_collision = PandaSphereDistanceField(device=device)
-    panda_collision.build_batch_features(batch_dim=[num_particles_per_goal * num_samples * (traj_len - 1), ], clone_objs=True)
-    panda_goal = SkeletonPointField(via_H=target_H, link_list=['ee_link'], device=device)
-    panda_goal.set_link_weights({
-        'ee_link': 1.
-    })
+    # panda_collision = PandaSphereDistanceField(device=device)
+    # panda_collision.build_batch_features(batch_dim=[num_particles_per_goal * num_samples * (traj_len - 1), ], clone_objs=True)\
+    panda_floor = FloorDistanceField(margin=0.05, device=device)
+    panda_self_link = LinkSelfDistanceField(margin=0.03, device=device)
+    panda_collision_link = LinkDistanceField(device=device)
+    panda_goal = EESE3DistanceField(target_H, device=device)
+
     # Factored Cost params
-    cost_sigmas = dict(
+    prior_sigmas = dict(
         sigma_start=0.0001,
-        sigma_gp=3.,
+        sigma_gp=0.02,
     )
-    sigma_coll = 0.000001
-    sigma_goal = 0.000001
+    # sigma_floor = 0.1
+    sigma_self = 0.001
+    sigma_coll = 0.0001
+    sigma_goal = 0.00001
 
     # Construct cost function
-    cost_func_list = []
-
-    cost_prior_multigoal = CostGP(
+    cost_prior = CostGP(
         n_dof, traj_len, start_state, dt,
-        cost_sigmas, tensor_args
+        prior_sigmas, tensor_args
     )
-    cost_func_list += [cost_prior_multigoal.eval]
-    cost_coll = CostCollision(n_dof, traj_len, sigma_coll=sigma_coll)
-    cost_func_list += [cost_coll.eval]
-    cost_goal = CostGoal(n_dof, traj_len, sigma_goal=sigma_goal)
-    cost_func_list += [cost_goal.eval]
-
-    cost_composite = CostComposite(n_dof, traj_len, cost_func_list)
+    # cost_floor = CostCollision(n_dof, traj_len, field=panda_floor, sigma_coll=sigma_floor)
+    cost_self = CostCollision(n_dof, traj_len, field=panda_self_link, sigma_coll=sigma_self)
+    cost_coll = CostCollision(n_dof, traj_len, field=panda_collision_link, sigma_coll=sigma_coll)
+    cost_goal = CostGoal(n_dof, traj_len, field=panda_goal, sigma_goal=sigma_goal)
+    cost_func_list = [cost_prior.eval, cost_self.eval, cost_coll.eval, cost_goal.eval]
+    # cost_func_list = [cost_prior.eval, cost_goal.eval]
+    cost_composite = CostComposite(n_dof, traj_len, cost_func_list, FK=panda_fk.compute_forward_kinematics_all_links)
     cost_func = cost_composite.eval
 
     ## Planner - 2D point particle dynamics
@@ -117,14 +107,14 @@ if __name__ == '__main__':
         start_state=start_state,
         multi_goal_states=multi_goal_states,
         cost_func=cost_func,
-        step_size=0.5,
+        step_size=0.2,
         sigma_start_init=0.0001,
-        sigma_goal_init=1,
+        sigma_goal_init=1.,
         sigma_gp_init=100.,
         sigma_start_sample=0.0001,
-        sigma_goal_sample=1,
+        sigma_goal_sample=1.,
         sigma_gp_sample=25.,
-        sigma_goal=1.,  # this is not used (sigma_goal joint space)
+        sigma_goal=100.,
         seed=seed,
         tensor_args=tensor_args,
     )
@@ -142,9 +132,6 @@ if __name__ == '__main__':
     obstacle_spheres = torch.from_numpy(obstacle_spheres).to(**tensor_args)
 
     obs = {
-        'collision_field': panda_collision.compute_cost,
-        'goal_field': panda_goal.compute_cost,
-        'FK': lambda q: panda_fk.compute_forward_kinematics_all_links(q, return_dict=True),
         'obstacle_spheres': obstacle_spheres
     }
 
