@@ -9,19 +9,31 @@ This library implements Stochastic Gaussian Process Motion Planning algorithm in
 ## Installation
 
 Create a conda environment
-```python
+```azure
 conda env create -f environment.yml
 ```
 Activate the environment and install the library
-```python
+```azure
 conda activate planning_env && pip install -e .
 ```
+
+Or simply just (and install PyTorch separately)
+```azure
+pip install -e .
+```
+
+Additionally, please install `https://github.com/anindex/torch_robotics`.
 
 ## Examples
 
 Try planning in planar environment with multiple goals
 ```azure
 python examples/planar_environment.py
+```
+
+Try planning in Panda environment with multiple obstacles
+```azure
+python examples/panda_environment.py
 ```
 
 ## Troubleshootings
