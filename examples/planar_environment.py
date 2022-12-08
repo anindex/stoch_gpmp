@@ -98,7 +98,7 @@ if __name__ == "__main__":
     obst_map = generate_obstacle_map(**obst_params)[0]
 
     obs = {
-        'collision_field': obst_map.get_collisions
+        'collision_field': obst_map
     }
 
     #---------------------------------------------------------------------------

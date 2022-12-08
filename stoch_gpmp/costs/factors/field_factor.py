@@ -14,22 +14,22 @@ class FieldFactor:
 
     def get_error(
             self,
-            q_traj,
+            q_trajs,
             field,
-            x_traj=None,
+            x_trajs=None,
             calc_jacobian=True,
             **observations
     ):
-        batch, horizon = q_traj.shape[0], q_traj.shape[1]
+        batch, horizon = q_trajs.shape[0], q_trajs.shape[1]
 
-        if x_traj is not None:
-            states = x_traj
+        if x_trajs is not None:
+            states = x_trajs
         else:
-            states = q_traj[:, :, :self.dof].reshape(-1, self.dof)
+            states = q_trajs[:, :, :self.dof].reshape(-1, self.dof)
         error = field.compute_cost(states, **observations).reshape(batch, horizon)
 
         if calc_jacobian:
-            H = -torch.autograd.grad(error.sum(), q_traj)[0]
+            H = -torch.autograd.grad(error.sum(), q_trajs)[0]
             error = error.detach()
             error.requires_grad = False
             field.zero_grad()
