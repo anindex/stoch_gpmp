@@ -33,7 +33,7 @@ python examples/planar_environment.py
 
 Try planning in Panda environment with multiple obstacles
 ```azure
-python examples/panda_environment.py
+python examples/panda_environment_stochgpmp.py
 ```
 
 ## Troubleshootings

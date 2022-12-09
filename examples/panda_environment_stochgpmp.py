@@ -6,7 +6,7 @@ import torch
 import pybullet as p
 
 from stoch_gpmp.planner import StochGPMP
-from stoch_gpmp.costs.cost_functions import CostCollision, CostComposite, CostGP, CostGoal
+from stoch_gpmp.costs.cost_functions import CostCollision, CostComposite, CostGP, CostGoal, CostGoalPrior
 
 from torch_kinematics_tree.models.robots import DifferentiableFrankaPanda
 from torch_planning_objectives.fields.distance_fields import EESE3DistanceField, LinkDistanceField, FloorDistanceField, LinkSelfDistanceField
@@ -38,7 +38,7 @@ if __name__ == '__main__':
     torch.manual_seed(seed)
 
     # world setup
-    target_pos = np.array([.3, .4, .3])
+    target_pos = np.array([-.3, -.3, .3])
     target_rot = (z_rot(-torch.tensor(torch.pi)) @ y_rot(-torch.tensor(torch.pi))).to(**tensor_args)
     target_frame = Frame(rot=target_rot, trans=torch.from_numpy(target_pos).to(**tensor_args), device=device)
     target_quat = target_frame.get_quaternion().squeeze().cpu().numpy()  # [x, y, z, w]
@@ -61,6 +61,7 @@ if __name__ == '__main__':
     env.reset()
     q_goal = env.panda.solveInverseKinematics(target_pos, target_quat)[:n_dof]
     q_goal = torch.tensor(q_goal, **tensor_args)
+    # multi_goal_states = None
     multi_goal_states = torch.cat([q_goal, torch.zeros_like(q_goal)]).unsqueeze(0)  # put IK solution
 
     ## Cost functions
@@ -80,6 +81,7 @@ if __name__ == '__main__':
     sigma_self = 0.001
     sigma_coll = 0.0001
     sigma_goal = 0.00001
+    sigma_goal_prior = 100
 
     # Construct cost function
     cost_prior = CostGP(
@@ -90,10 +92,14 @@ if __name__ == '__main__':
     cost_self = CostCollision(n_dof, traj_len, field=panda_self_link, sigma_coll=sigma_self)
     cost_coll = CostCollision(n_dof, traj_len, field=panda_collision_link, sigma_coll=sigma_coll)
     cost_goal = CostGoal(n_dof, traj_len, field=panda_goal, sigma_goal=sigma_goal)
-    cost_func_list = [cost_prior.eval, cost_self.eval, cost_coll.eval, cost_goal.eval]
+    cost_goal_prior = CostGoalPrior(n_dof, traj_len, multi_goal_states=multi_goal_states, 
+                                    num_particles_per_goal=num_particles_per_goal, 
+                                    num_samples=num_samples, 
+                                    sigma_goal_prior=sigma_goal_prior,
+                                    tensor_args=tensor_args)
+    cost_func_list = [cost_prior, cost_goal_prior, cost_self, cost_coll, cost_goal]
     # cost_func_list = [cost_prior.eval, cost_goal.eval]
     cost_composite = CostComposite(n_dof, traj_len, cost_func_list, FK=panda_fk.compute_forward_kinematics_all_links)
-    cost_func = cost_composite.eval
 
     ## Planner - 2D point particle dynamics
     stochgpmp_params = dict(
@@ -106,7 +112,7 @@ if __name__ == '__main__':
         temp=1.,
         start_state=start_state,
         multi_goal_states=multi_goal_states,
-        cost_func=cost_func,
+        cost=cost_composite,
         step_size=0.2,
         sigma_start_init=0.0001,
         sigma_goal_init=1.,
@@ -114,7 +120,6 @@ if __name__ == '__main__':
         sigma_start_sample=0.0001,
         sigma_goal_sample=1.,
         sigma_gp_sample=25.,
-        sigma_goal=100.,
         seed=seed,
         tensor_args=tensor_args,
     )
@@ -155,6 +160,8 @@ if __name__ == '__main__':
     for traj in trajs:
         plt.figure()
         ax = plt.axes(projection='3d')
+        skeleton = get_skeleton_from_model(panda_fk, q_goal, panda_fk.get_link_names()) # visualize IK solution
+        skeleton.draw_skeleton(color='r')
         for t in range(traj.shape[0] - 1):
             skeleton = get_skeleton_from_model(panda_fk, traj[t], panda_fk.get_link_names())
             skeleton.draw_skeleton()

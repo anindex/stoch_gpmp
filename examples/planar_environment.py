@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 from stoch_gpmp.costs.obstacle_map.map_generator import generate_obstacle_map
 from stoch_gpmp.planner import StochGPMP
-from stoch_gpmp.costs.cost_functions import CostCollision, CostComposite, CostGP
+from stoch_gpmp.costs.cost_functions import CostCollision, CostComposite, CostGP, CostGoalPrior
 
 
 if __name__ == "__main__":
@@ -28,54 +28,6 @@ if __name__ == "__main__":
         [-3, 9, 0., 0.],
     ]).to(**tensor_args)
 
-    #-------------------------------- Cost func. ---------------------------------
-
-    # Factored Cost params
-    cost_sigmas = dict(
-        sigma_start=0.001,
-        sigma_gp=0.1,
-    )
-    sigma_coll = 1e-5
-
-    # Construct cost function
-    cost_func_list = []
-
-    cost_prior_multigoal = CostGP(
-        n_dof, traj_len, start_state, dt,
-        cost_sigmas, tensor_args
-    )
-    cost_func_list += [cost_prior_multigoal.eval]
-    cost_obst_2D = CostCollision(n_dof, traj_len, sigma_coll=sigma_coll)
-    cost_func_list += [cost_obst_2D.eval]
-
-    cost_composite = CostComposite(n_dof, traj_len, cost_func_list)
-    cost_func = cost_composite.eval
-
-    ## Planner - 2D point particle dynamics
-    stochgpmp_params = dict(
-        num_particles_per_goal=num_particles_per_goal,
-        num_samples=num_samples,
-        traj_len=traj_len,
-        dt=dt,
-        n_dof=n_dof,
-        opt_iters=1, # Keep this 1 for visualization
-        temp=1.,
-        start_state=start_state,
-        multi_goal_states=multi_goal_states,
-        cost_func=cost_func,
-        step_size=0.5,
-        sigma_start_init=1e-3,
-        sigma_goal_init=1e-3,
-        sigma_gp_init=50.,
-        sigma_start_sample=1e-3,
-        sigma_goal_sample=1e-3,
-        sigma_gp_sample=3,
-        sigma_goal=0.001,
-        seed=seed,
-        tensor_args=tensor_args,
-    )
-    planner = StochGPMP(**stochgpmp_params)
-
     ## Obstacle map
     # obst_list = [(0, 0, 4, 6)]
     obst_list = []
@@ -97,9 +49,54 @@ if __name__ == "__main__":
     random.seed(seed)
     obst_map = generate_obstacle_map(**obst_params)[0]
 
-    obs = {
-        'collision_field': obst_map
-    }
+    #-------------------------------- Cost func. ---------------------------------
+
+    # Factored Cost params
+    cost_sigmas = dict(
+        sigma_start=0.001,
+        sigma_gp=0.1,
+    )
+    sigma_coll = 1e-5
+    sigma_goal_prior = 0.001
+
+    # Construct cost function
+    cost_prior = CostGP(
+        n_dof, traj_len, start_state, dt,
+        cost_sigmas, tensor_args
+    )
+    cost_goal_prior = CostGoalPrior(n_dof, traj_len, multi_goal_states=multi_goal_states, 
+                                    num_particles_per_goal=num_particles_per_goal, 
+                                    num_samples=num_samples, 
+                                    sigma_goal_prior=sigma_goal_prior,
+                                    tensor_args=tensor_args)
+    cost_obst_2D = CostCollision(n_dof, traj_len, field=obst_map, sigma_coll=sigma_coll)
+    cost_func_list = [cost_prior, cost_goal_prior, cost_obst_2D]
+    cost_composite = CostComposite(n_dof, traj_len, cost_func_list)
+
+    ## Planner - 2D point particle dynamics
+    stochgpmp_params = dict(
+        num_particles_per_goal=num_particles_per_goal,
+        num_samples=num_samples,
+        traj_len=traj_len,
+        dt=dt,
+        n_dof=n_dof,
+        opt_iters=1, # Keep this 1 for visualization
+        temp=1.,
+        start_state=start_state,
+        multi_goal_states=multi_goal_states,
+        cost=cost_composite,
+        step_size=0.5,
+        sigma_start_init=1e-3,
+        sigma_goal_init=1e-3,
+        sigma_gp_init=50.,
+        sigma_start_sample=1e-3,
+        sigma_goal_sample=1e-3,
+        sigma_gp_sample=3,
+        seed=seed,
+        tensor_args=tensor_args,
+    )
+    planner = StochGPMP(**stochgpmp_params)
+    obs = {}
 
     #---------------------------------------------------------------------------
     # Optimize

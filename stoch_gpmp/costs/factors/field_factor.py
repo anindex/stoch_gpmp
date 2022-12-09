@@ -5,11 +5,14 @@ class FieldFactor:
 
     def __init__(
             self,
-            dof,
+            n_dof,
             sigma,
+            traj_range,
     ):
         self.sigma = sigma
-        self.dof = dof
+        self.n_dof = n_dof
+        self.traj_range = traj_range
+        self.length = traj_range[1] - traj_range[0]
         self.K = 1. / (sigma**2)
 
     def get_error(
@@ -20,19 +23,19 @@ class FieldFactor:
             calc_jacobian=True,
             **observations
     ):
-        batch, horizon = q_trajs.shape[0], q_trajs.shape[1]
+        batch = q_trajs.shape[0]
 
         if x_trajs is not None:
-            states = x_trajs
+            states = x_trajs[:, self.traj_range[0]:self.traj_range[1]]
         else:
-            states = q_trajs[:, :, :self.dof].reshape(-1, self.dof)
-        error = field.compute_cost(states, **observations).reshape(batch, horizon)
+            states = q_trajs[:, self.traj_range[0]:self.traj_range[1], :self.n_dof].reshape(-1, self.n_dof)
+        error = field.compute_cost(states, **observations).reshape(batch, self.length)
 
         if calc_jacobian:
-            H = -torch.autograd.grad(error.sum(), q_trajs)[0]
+            H = -torch.autograd.grad(error.sum(), q_trajs, retain_graph=True)[0][:, self.traj_range[0]:self.traj_range[1], :self.n_dof]
             error = error.detach()
             error.requires_grad = False
             field.zero_grad()
-            return error, H.reshape(batch, horizon, self.dof)
+            return error, H
         else:
             return error
