@@ -175,6 +175,7 @@ class StochGPMP:
         )
         self.particle_means = self._init_dist.sample(self.num_particles_per_goal).to(**self.tensor_args)
         self.particle_means = self.particle_means.flatten(0, 1)
+        del self._init_dist  # free memory
 
         # Sampling distributions
         self._sample_dist = self.get_prior_dist(
@@ -548,8 +549,8 @@ class GPMP:
         else:
             J_t_J = A_t_A + delta * I * torch.diagonal(A_t_A, dim1=1, dim2=2).unsqueeze(-1)
             # Since hessian will be averaged over particles, add diagonal matrix of the mean.
-            # diag_A_t_A = A_t_A.mean(0) * I
-            # J_t_J = A_t_A + delta * diag_A_t_A
+            diag_A_t_A = A_t_A.mean(0) * I
+            J_t_J = A_t_A + delta * diag_A_t_A
         g = A_t_K @ b
         return J_t_J, g
 
@@ -563,7 +564,7 @@ class GPMP:
         elif method == 'cholesky':
             l = torch.linalg.cholesky(A)
             # z = torch.linalg.solve_triangular(l, b, upper=False)
-            # return torch.linalg.solve_triangular(l.transpose(-2, -1), z, upper=False)
+            # return torch.linalg.solve_triangular(l.mT, z, upper=False)
             z = torch.triangular_solve(b, l, transpose=False, upper=False)[0]
             return torch.triangular_solve(z, l, transpose=True, upper=False)[0]
         else:

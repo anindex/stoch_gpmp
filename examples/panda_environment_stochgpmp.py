@@ -25,20 +25,20 @@ if __name__ == '__main__':
     # params
     # device = 'cpu'
     device = torch.device('cuda:' + str(0) if torch.cuda.is_available() else 'cpu')
-    tensor_args = {'device': device, 'dtype': torch.float64}
+    tensor_args = {'device': device, 'dtype': torch.float32}
     seed = int(time.time())
     num_particles_per_goal = 10
-    num_samples = 256
+    num_samples = 32
     num_obst = 5
-    traj_len = 8
-    dt = 0.01
+    traj_len = 64
+    dt = 0.05
     # set seed
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    # world setup
-    target_pos = np.array([-.3, -.3, .3])
+    # world setup (target_pos & target_rot can be randomized)
+    target_pos = np.array([.3, .3, .3])
     target_rot = (z_rot(-torch.tensor(torch.pi)) @ y_rot(-torch.tensor(torch.pi))).to(**tensor_args)
     target_frame = Frame(rot=target_rot, trans=torch.from_numpy(target_pos).to(**tensor_args), device=device)
     target_quat = target_frame.get_quaternion().squeeze().cpu().numpy()  # [x, y, z, w]
@@ -75,13 +75,13 @@ if __name__ == '__main__':
     # Factored Cost params
     prior_sigmas = dict(
         sigma_start=0.0001,
-        sigma_gp=0.02,
+        sigma_gp=0.0007,
     )
     # sigma_floor = 0.1
-    sigma_self = 0.001
-    sigma_coll = 0.0001
-    sigma_goal = 0.00001
-    sigma_goal_prior = 100
+    sigma_self = 0.01
+    sigma_coll = 0.0007
+    sigma_goal = 0.00007
+    sigma_goal_prior = 20.
 
     # Construct cost function
     cost_prior = CostGP(
@@ -98,7 +98,7 @@ if __name__ == '__main__':
                                     sigma_goal_prior=sigma_goal_prior,
                                     tensor_args=tensor_args)
     cost_func_list = [cost_prior, cost_goal_prior, cost_self, cost_coll, cost_goal]
-    # cost_func_list = [cost_prior.eval, cost_goal.eval]
+    # cost_func_list = [cost_prior, cost_goal_prior, cost_goal]
     cost_composite = CostComposite(n_dof, traj_len, cost_func_list, FK=panda_fk.compute_forward_kinematics_all_links)
 
     ## Planner - 2D point particle dynamics
@@ -115,11 +115,11 @@ if __name__ == '__main__':
         cost=cost_composite,
         step_size=0.2,
         sigma_start_init=0.0001,
-        sigma_goal_init=1.,
-        sigma_gp_init=100.,
+        sigma_goal_init=0.1,
+        sigma_gp_init=1.,
         sigma_start_sample=0.0001,
-        sigma_goal_sample=1.,
-        sigma_gp_sample=25.,
+        sigma_goal_sample=0.07,
+        sigma_gp_sample=0.2,
         seed=seed,
         tensor_args=tensor_args,
     )
@@ -163,13 +163,14 @@ if __name__ == '__main__':
         skeleton = get_skeleton_from_model(panda_fk, q_goal, panda_fk.get_link_names()) # visualize IK solution
         skeleton.draw_skeleton(color='r')
         for t in range(traj.shape[0] - 1):
-            skeleton = get_skeleton_from_model(panda_fk, traj[t], panda_fk.get_link_names())
-            skeleton.draw_skeleton()
+            if t % 4 == 0:
+                skeleton = get_skeleton_from_model(panda_fk, traj[t], panda_fk.get_link_names())
+                skeleton.draw_skeleton()
         skeleton = get_skeleton_from_model(panda_fk, traj[-1], panda_fk.get_link_names())
         skeleton.draw_skeleton(color='g')
 
         start_skeleton = get_skeleton_from_model(panda_fk, start_state[:n_dof], panda_fk.get_link_names())
         start_skeleton.draw_skeleton(color='b')
         ax.plot(target_pos[0], target_pos[1], target_pos[2], 'r*', markersize=7)
-        ax.scatter(obstacle_spheres[0, :, 0], obstacle_spheres[0, :, 1], obstacle_spheres[0, :, 2], s=obstacle_spheres[0, :, 3]*1000, color='r')
+        ax.scatter(obstacle_spheres[0, :, 0], obstacle_spheres[0, :, 1], obstacle_spheres[0, :, 2], s=obstacle_spheres[0, :, 3]*2000, color='r')
         plt.show()

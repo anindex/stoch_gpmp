@@ -34,7 +34,6 @@ class FieldFactor:
         if calc_jacobian:
             H = -torch.autograd.grad(error.sum(), q_trajs, retain_graph=True)[0][:, self.traj_range[0]:self.traj_range[1], :self.n_dof]
             error = error.detach()
-            error.requires_grad = False
             field.zero_grad()
             return error, H
         else:
