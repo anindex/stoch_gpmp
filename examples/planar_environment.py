@@ -3,7 +3,7 @@ import time
 import random
 import matplotlib.pyplot as plt
 
-from stoch_gpmp.costs.obstacle_map.map_generator import generate_obstacle_map
+from torch_planning_objectives.fields.occupancy_map.map_generator import generate_obstacle_map
 from stoch_gpmp.planner import StochGPMP
 from stoch_gpmp.costs.cost_functions import CostCollision, CostComposite, CostGP, CostGoalPrior
 

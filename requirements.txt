@@ -1,6 +1,4 @@
 scipy
 numpy
 matplotlib
-ghalton
-sobol_seq
 pybullet
