@@ -20,6 +20,7 @@ class StochGPMP:
             temp=1.,
             start_state=None,
             multi_goal_states=None,
+            initial_particle_means=None,
             cost=None,
             sigma_start_init=None,
             sigma_start_sample=None,
@@ -67,7 +68,7 @@ class StochGPMP:
         self._weights = None
         self._sample_dist = None
 
-        self.reset(start_state, multi_goal_states)
+        self.reset(start_state, multi_goal_states, initial_particle_means=initial_particle_means)
 
     def set_prior_factors(self):
 
