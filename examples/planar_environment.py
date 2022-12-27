@@ -106,7 +106,7 @@ if __name__ == "__main__":
     for i in range(opt_iters + 1):
         print(i)
         time_start = time.time()
-        planner.optimize(obs)
+        planner.optimize(**obs)
         print(f'Time(s) per iter: {time.time() - time_start} sec')
         if i == 1 or i % 50 == 0:
             controls, _, trajectories, trajectory_means, weights = planner.get_recent_samples()

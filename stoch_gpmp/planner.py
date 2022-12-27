@@ -194,9 +194,9 @@ class StochGPMP:
         self.Sigma_inv = self._sample_dist.Sigma_inv
         self.state_samples = self._sample_dist.sample(self.num_samples).to(**self.tensor_args)
 
-    def _get_costs(self, observation):
+    def _get_costs(self, **observation):
 
-        costs = self.cost.eval(self.state_samples, observation).reshape(self.num_particles, self.num_samples)
+        costs = self.cost.eval(self.state_samples, **observation).reshape(self.num_particles, self.num_samples)
 
         # Add cost from importance-sampling ratio
         V  = self.state_samples.view(-1, self.num_samples, self.traj_len * self.d_state_opt)  # flatten trajectories
@@ -204,7 +204,7 @@ class StochGPMP:
         costs += self.temp * (V @ self.Sigma_inv @ U.transpose(1, 2)).squeeze(2)
         return costs
 
-    def sample_and_eval(self, observation):
+    def sample_and_eval(self, **observation):
         # TODO: update prior covariance with new goal location
 
         # Sample state-trajectory particles
@@ -212,7 +212,7 @@ class StochGPMP:
             **self.tensor_args)
 
         # Evaluate costs
-        costs = self._get_costs(observation)
+        costs = self._get_costs(**observation)
 
         position_seq = self.state_samples[..., :self.n_dof]
         velocity_seq = self.state_samples[..., -self.n_dof:]
@@ -242,8 +242,8 @@ class StochGPMP:
 
     def optimize(
             self,
-            observation={'state': None},
             opt_iters=None,
+            **observation
     ):
 
         if opt_iters is None:
@@ -256,7 +256,7 @@ class StochGPMP:
                  state_trajectories,
                  control_particles,
                  state_particles,
-                 costs,) = self.sample_and_eval(observation)
+                 costs,) = self.sample_and_eval(**observation)
 
                 self._update_distribution(costs, self.state_samples)
 
@@ -491,15 +491,15 @@ class GPMP:
 
     def optimize(
             self,
-            observation={'state': None},
             opt_iters=None,
+            **observation
     ):
 
         if opt_iters is None:
             opt_iters = self.opt_iters
 
         for opt_step in range(opt_iters):
-            b, K = self._step(observation)
+            b, K = self._step(**observation)
 
         self.costs = self._get_costs(b, K)
 
@@ -516,8 +516,8 @@ class GPMP:
             costs,
         )
 
-    def _step(self, observation):
-        A, b, K = self.cost.get_linear_system(self.particle_means, observation)
+    def _step(self, **observation):
+        A, b, K = self.cost.get_linear_system(self.particle_means, **observation)
 
         J_t_J, g = self._get_grad_terms(
             A, b, K,

@@ -18,11 +18,11 @@ class Cost(ABC):
         pass
 
     @abstractmethod
-    def eval(self, trajs, observation=None):
+    def eval(self, trajs, **observation):
         pass
 
     @abstractmethod
-    def get_linear_system(self, trajs, observation=None):
+    def get_linear_system(self, trajs, **observation):
         pass
 
 
@@ -42,7 +42,7 @@ class CostComposite(Cost):
         self.FK = FK
         self.tensor_args = tensor_args
 
-    def eval(self, trajs, observation=None):
+    def eval(self, trajs, **observation):
         trajs = trajs.reshape(-1, self.traj_len, self.dim)
         batch_size = trajs.shape[0]
         x_trajs = None
@@ -51,11 +51,11 @@ class CostComposite(Cost):
         costs = 0
 
         for cost in self.cost_list:
-            costs += cost.eval(trajs, x_trajs=x_trajs, observation=observation)
+            costs += cost.eval(trajs, x_trajs=x_trajs, **observation)
 
         return costs
 
-    def get_linear_system(self, trajs, observation=None):
+    def get_linear_system(self, trajs, **observation):
         trajs.requires_grad = True
         trajs = trajs.reshape(-1, self.traj_len, self.dim)
         batch_size = trajs.shape[0]
@@ -65,7 +65,7 @@ class CostComposite(Cost):
         As, bs, Ks = [], [], []
         optim_dim = 0
         for cost in self.cost_list:
-            A, b, K = cost.get_linear_system(trajs, x_trajs=x_trajs, observation=observation)
+            A, b, K = cost.get_linear_system(trajs, x_trajs=x_trajs, **observation)
             if A is None or b is None or K is None:
                 continue
             optim_dim += A.shape[1]
@@ -122,7 +122,7 @@ class CostGP(Cost):
             self.tensor_args,
         )
 
-    def eval(self, trajs, x_trajs=None, observation=None):
+    def eval(self, trajs, x_trajs=None, **observation):
         # trajs = trajs.reshape(-1, self.traj_len, self.dim)
         # Start cost
         err_p = self.start_prior.get_error(trajs[:, [0]], calc_jacobian=False)
@@ -142,7 +142,7 @@ class CostGP(Cost):
 
         return costs
     
-    def get_linear_system(self, trajs, x_trajs=None, observation=None):
+    def get_linear_system(self, trajs, x_trajs=None, **observation):
         batch_size = trajs.shape[0]
         A = torch.zeros(batch_size, self.dim * self.traj_len, self.dim * self.traj_len, **self.tensor_args)
         b = torch.zeros(batch_size, self.dim * self.traj_len, 1, **self.tensor_args)
@@ -191,7 +191,7 @@ class CostCollision(Cost):
             [1, self.traj_len]
         )
 
-    def eval(self, trajs, x_trajs=None, observation=None):
+    def eval(self, trajs, x_trajs=None, **observation):
         costs = 0
         if self.field is not None:
             err_obst = self.obst_factor.get_error(
@@ -207,7 +207,7 @@ class CostCollision(Cost):
 
         return costs
     
-    def get_linear_system(self, trajs, x_trajs=None, observation=None):
+    def get_linear_system(self, trajs, x_trajs=None, **observation):
         A, b, K = None, None, None
         if self.field is not None:
             batch_size = trajs.shape[0]
@@ -252,7 +252,7 @@ class CostGoal(Cost):
             [self.traj_len - 1, self.traj_len]   # only take last point
         )
 
-    def eval(self, trajs, x_trajs=None, observation=None):
+    def eval(self, trajs, x_trajs=None, **observation):
         costs = 0
         if self.field is not None:
             err_obst = self.goal_factor.get_error(
@@ -267,7 +267,7 @@ class CostGoal(Cost):
 
         return costs
 
-    def get_linear_system(self, trajs, x_trajs=None, observation=None):
+    def get_linear_system(self, trajs, x_trajs=None, **observation):
         A, b, K = None, None, None
         if self.field is not None:
             batch_size = trajs.shape[0]
@@ -320,7 +320,7 @@ class CostGoalPrior(Cost):
                 )
             )
 
-    def eval(self, trajs, x_trajs=None, observation=None):
+    def eval(self, trajs, x_trajs=None, **observation):
         costs = 0
         if self.multi_goal_states is not None:
             x = trajs.reshape(self.num_goals, self.num_particles_per_goal * self.num_samples, self.traj_len, self.dim)
@@ -334,7 +334,7 @@ class CostGoalPrior(Cost):
             costs = costs.flatten()
         return costs
 
-    def get_linear_system(self, trajs, x_trajs=None, observation=None):
+    def get_linear_system(self, trajs, x_trajs=None, **observation):
         A, b, K = None, None, None
         if self.multi_goal_states is not None:
             npg = self.num_particles_per_goal

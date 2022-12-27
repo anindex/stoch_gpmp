@@ -149,7 +149,7 @@ if __name__ == '__main__':
     for i in range(opt_iters + 1):
         print(i)
         time_start = time.time()
-        control_means, trajectory_means, costs = planner.optimize(obs)
+        control_means, trajectory_means, costs = planner.optimize(**obs)
         print(f'Time(s) per iter: {time.time() - time_start} sec')
 
     #---------------------------------------------------------------------------
