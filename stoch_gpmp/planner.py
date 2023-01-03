@@ -28,14 +28,15 @@ class StochGPMP:
             sigma_goal_sample=None,
             sigma_gp_init=None,
             sigma_gp_sample=None,
-            seed=0,
+            seed=None,
             tensor_args=None,
     ):
         if tensor_args is None:
             tensor_args = {'device': torch.device('cpu'), 'dtype': torch.float32}
         self.tensor_args = tensor_args
 
-        torch.manual_seed(seed)
+        if seed is not None:
+            torch.manual_seed(seed)
 
         self.n_dof = n_dof
         self.d_state_opt = 2 * self.n_dof
@@ -250,7 +251,6 @@ class StochGPMP:
             opt_iters = self.opt_iters
 
         for opt_step in range(opt_iters):
-
             with torch.no_grad():
                 (control_samples,
                  state_trajectories,
@@ -328,7 +328,7 @@ class GPMP:
             sigma_goal=None,
             sigma_gp_init=None,
             sigma_gp_sample=None,
-            seed=0,
+            seed=None,
             solver_params=None,
             tensor_args=None,
     ):
@@ -336,7 +336,8 @@ class GPMP:
             tensor_args = {'device': torch.device('cpu'), 'dtype': torch.float32}
         self.tensor_args = tensor_args
 
-        torch.manual_seed(seed)
+        if seed is not None:
+            torch.manual_seed(seed)
 
         self.n_dof = n_dof
         self.d_state_opt = 2 * self.n_dof

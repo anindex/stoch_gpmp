@@ -42,7 +42,7 @@ if __name__ == "__main__":
         random_gen=True,
         num_obst=10,
         rand_xy_limits=[[-7.5, 7.5], [-7.5, 7.5]],
-        rand_shape=[2, 2],
+        rand_rect_shape=[2, 2],
         tensor_args=tensor_args,
     )
     # For obst. generation
@@ -104,11 +104,12 @@ if __name__ == "__main__":
 
     traj_history = []
     for i in range(opt_iters + 1):
-        print(i)
         time_start = time.time()
         planner.optimize(**obs)
-        print(f'Time(s) per iter: {time.time() - time_start} sec')
+        time_finish = time.time()
         if i == 1 or i % 50 == 0:
+            print(i)
+            print(f'Time(s) per iter: {time_finish - time_start:.4f} sec')
             controls, _, trajectories, trajectory_means, weights = planner.get_recent_samples()
             traj_history.append(trajectories)
 
@@ -133,4 +134,4 @@ if __name__ == "__main__":
         for i in range(trajs.shape[0]):
             ax.plot(mean_trajs[i, :, 0], mean_trajs[i, :, 1], 'b')
         plt.draw()
-        plt.pause(1e-10)
+        plt.pause(1e-1)
