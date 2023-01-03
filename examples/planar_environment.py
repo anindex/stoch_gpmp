@@ -42,7 +42,7 @@ if __name__ == "__main__":
         random_gen=True,
         num_obst=10,
         rand_xy_limits=[[-7.5, 7.5], [-7.5, 7.5]],
-        rand_shape=[2, 2],
+        rand_rect_shape=[2, 2],
         tensor_args=tensor_args,
     )
     # For obst. generation
