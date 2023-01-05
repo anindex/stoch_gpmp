@@ -30,6 +30,7 @@ class StochGPMP:
             sigma_gp_sample=None,
             seed=0,
             tensor_args=None,
+            **kwargs
     ):
         if tensor_args is None:
             tensor_args = {'device': torch.device('cpu'), 'dtype': torch.float32}
@@ -331,6 +332,7 @@ class GPMP:
             seed=0,
             solver_params=None,
             tensor_args=None,
+            **kwargs
     ):
         if tensor_args is None:
             tensor_args = {'device': torch.device('cpu'), 'dtype': torch.float32}
