@@ -4,6 +4,8 @@ This library implements Stochastic Gaussian Process Motion Planning algorithm in
 
 [[Website]](https://sites.google.com/view/implicit-priors/home)      [[IROS'22 paper]](https://www.ias.informatik.tu-darmstadt.de/uploads/Team/AnThaiLe/iros2022_ebmtrajopt.pdf)
 
+(Note: Planning code has been refactored from the [original source repository.](https://github.com/sashalambert/mpc_trajopt/blob/main/mpc_trajopt/gppi/multi_gppi_planner.py)) 
+
 <img src="assets/example.png" alt="example" style="width:800px;"/>
 
 ## Installation

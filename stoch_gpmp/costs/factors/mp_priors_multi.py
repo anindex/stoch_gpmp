@@ -1,6 +1,14 @@
+"""
+Multi-Modal Gaussian trajectory prior.
+Original source: https://github.com/sashalambert/mpc_trajopt
+"""
+
+__author__ = "Alexander Lambert"
+__license__ = "MIT"
+
+
 import torch
 import torch.distributions as dist
-
 
 
 class MultiMPPrior:

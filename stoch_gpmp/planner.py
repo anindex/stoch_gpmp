@@ -1,3 +1,12 @@
+"""
+Stochastic GPMP planner multi-modal trajectory optimization.
+Re-factored from original MultiGPPI code: https://github.com/sashalambert/mpc_trajopt
+"""
+
+__author__ = "Alexander Lambert"
+__license__ = "MIT"
+
+
 import torch
 from stoch_gpmp.costs.factors.mp_priors_multi import MultiMPPrior
 from stoch_gpmp.costs.factors.gp_factor import GPFactor
