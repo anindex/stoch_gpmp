@@ -231,15 +231,18 @@ class StochGPMP:
 
     def _update_distribution(self, costs, traj_samples):
 
-        self._weights = torch.softmax( -costs / self.temp, dim=1)
+        self._weights = torch.softmax(-costs / self.temp, dim=1)
         self._weights = self._weights.reshape(-1, self.num_samples, 1, 1)
 
+        # sum over particles
+        approx_grad = (self._weights * (traj_samples - self.particle_means.unsqueeze(1))).sum(1)
+
         self.particle_means.add_(
-            self.step_size * (
-                self._weights * (traj_samples - self.particle_means.unsqueeze(1))
-            ).sum(1)
+            self.step_size * approx_grad
         )
         self._sample_dist.set_mean(self.particle_means.view(self.num_particles, -1))
+
+        return approx_grad
 
     def optimize(
             self,
@@ -258,7 +261,7 @@ class StochGPMP:
                  state_particles,
                  costs,) = self.sample_and_eval(**observation)
 
-                self._update_distribution(costs, self.state_samples)
+                approx_grad = self._update_distribution(costs, self.state_samples)
 
         self._recent_control_samples = control_samples
         self._recent_control_particles = control_particles
@@ -272,6 +275,7 @@ class StochGPMP:
             state_trajectories,
             control_samples,
             costs,
+            approx_grad
         )
 
     def _get_traj(self, mode='best'):
