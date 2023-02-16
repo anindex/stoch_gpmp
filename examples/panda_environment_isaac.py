@@ -139,7 +139,7 @@ if __name__ == '__main__':
         dt=dt,
         n_dof=n_dof,
         opt_iters=1, # Keep this 1 for visualization
-        temp=1.,
+        temperature=1.,
         start_state=start_state,
         multi_goal_states=multi_goal_states,
         cost_func=cost_func,

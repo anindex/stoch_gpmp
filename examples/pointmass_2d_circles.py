@@ -3,17 +3,40 @@ import time
 import random
 import matplotlib.pyplot as plt
 
+from dplan.motion_planners.utils import elapsed_time
+from experiment_launcher.utils import fix_random_seed
+from robot_envs.base_envs.pointmass_env_base import PointMassEnvBase
 from torch_planning_objectives.fields.occupancy_map.map_generator import generate_obstacle_map
 from stoch_gpmp.planner import StochGPMP
 from stoch_gpmp.costs.cost_functions import CostCollision, CostComposite, CostGP, CostGoalPrior
+from torch_planning_objectives.fields.primitive_distance_fields import Sphere
 
 
 if __name__ == "__main__":
-    device = torch.device('cuda:' + str(0) if torch.cuda.is_available() else 'cpu')
-    # device = 'cpu'
+    seed = 0
+    fix_random_seed(seed)
+
+    device = 'cuda'
     tensor_args = {'device': device, 'dtype': torch.float64}
 
-    n_dof = 2
+    # -------------------------------- Environment ---------------------------------
+    obst_primitives_l = [
+        Sphere([[0., 0.]],
+               [1.0],
+               tensor_args=tensor_args
+               )
+    ]
+
+    env = PointMassEnvBase(
+        q_min=(-10, -10),
+        q_max=(10, 10),
+        task_space_bounds=((-10., 10.), (-10., 10.), (-10., 10.)),
+        obst_primitives_l=obst_primitives_l,
+        tensor_args=tensor_args
+    )
+
+    # -------------------------------- Planner ---------------------------------
+    n_dof = env.q_n_dofs
     traj_len = 64
     dt = 0.02
     num_particles_per_goal = 5
@@ -28,29 +51,7 @@ if __name__ == "__main__":
         [-3, 9, 0., 0.],
     ]).to(**tensor_args)
 
-    ## Obstacle map
-    # obst_list = [(0, 0, 4, 6)]
-    obst_list = []
-    cell_size = 0.1
-    map_dim = [20, 20]
-
-    obst_params = dict(
-        map_dim=map_dim,
-        obst_list=obst_list,
-        cell_size=cell_size,
-        map_type='direct',
-        random_gen=True,
-        num_obst=10,
-        rand_xy_limits=[[-7.5, 7.5], [-7.5, 7.5]],
-        rand_rect_shape=[2, 2],
-        tensor_args=tensor_args,
-    )
-    # For obst. generation
-    random.seed(seed)
-    obst_map = generate_obstacle_map(**obst_params)[0]
-
-    #-------------------------------- Cost func. ---------------------------------
-
+    # -------------------------------- Cost func. ---------------------------------
     # Factored Cost params
     cost_sigmas = dict(
         sigma_start=0.001,
@@ -69,40 +70,46 @@ if __name__ == "__main__":
                                     num_samples=num_samples, 
                                     sigma_goal_prior=sigma_goal_prior,
                                     tensor_args=tensor_args)
-    cost_obst_2D = CostCollision(n_dof, traj_len, field=obst_map, sigma_coll=sigma_coll)
+
+    def collision_cost_wrapper(samples, **kwargs):
+        # sum over points in the trajectory
+        return env.compute_collision_cost(samples, field_type='sdf').sum(-1)
+
+    cost_obst_2D = collision_cost_wrapper
     cost_func_list = [cost_prior, cost_goal_prior, cost_obst_2D]
     cost_composite = CostComposite(n_dof, traj_len, cost_func_list)
 
-    ## Planner - 2D point particle dynamics
+    # -------------------------------- Planner ---------------------------------
     stochgpmp_params = dict(
         num_particles_per_goal=num_particles_per_goal,
         num_samples=num_samples,
         traj_len=traj_len,
         dt=dt,
         n_dof=n_dof,
-        opt_iters=1, # Keep this 1 for visualization
+        opt_iters=1,  # Keep this 1 for visualization
         temperature=1.,
         start_state=start_state,
         multi_goal_states=multi_goal_states,
         cost=cost_composite,
-        step_size=0.5,
+        step_size=0.3,
         sigma_start_init=1e-3,
         sigma_goal_init=1e-3,
-        sigma_gp_init=50.,
+        sigma_gp_init=10.,
         sigma_start_sample=1e-3,
         sigma_goal_sample=1e-3,
-        sigma_gp_sample=3,
+        sigma_gp_sample=1.,
         seed=seed,
         tensor_args=tensor_args,
     )
     planner = StochGPMP(**stochgpmp_params)
     obs = {}
 
-    #---------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
     # Optimize
-    opt_iters = 500
+    opt_iters = 1000
 
     traj_history = []
+    start_time = time.time()
     for i in range(opt_iters + 1):
         time_start = time.time()
         planner.optimize(**obs)
@@ -112,8 +119,9 @@ if __name__ == "__main__":
             print(f'Time(s) per iter: {time_finish - time_start:.4f} sec')
             controls, _, trajectories, trajectory_means, weights = planner.get_recent_samples()
             traj_history.append(trajectories)
+    print(f'Planning time: {elapsed_time(start_time)}')
 
-    #---------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
     # Plotting
 
     import numpy as np
@@ -123,8 +131,7 @@ if __name__ == "__main__":
     for trajs in traj_history:
         plt.clf()
         ax = fig.gca()
-        cs = ax.contourf(x, y, obst_map.map, 20)
-        cbar = fig.colorbar(cs, ax=ax)
+        env.render(ax)
 
         trajs = trajs.cpu().numpy()
         mean_trajs = trajs.mean(1)
@@ -134,4 +141,4 @@ if __name__ == "__main__":
         for i in range(trajs.shape[0]):
             ax.plot(mean_trajs[i, :, 0], mean_trajs[i, :, 1], 'b')
         plt.draw()
-        plt.pause(1e-1)
+        plt.pause(1e-2)

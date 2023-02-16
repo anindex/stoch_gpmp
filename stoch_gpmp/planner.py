@@ -1,3 +1,12 @@
+"""
+Stochastic GPMP planner multi-modal trajectory optimization.
+Re-factored from original MultiGPPI code: https://github.com/sashalambert/mpc_trajopt
+"""
+
+__author__ = "Alexander Lambert"
+__license__ = "MIT"
+
+
 import torch
 from stoch_gpmp.costs.factors.mp_priors_multi import MultiMPPrior
 from stoch_gpmp.costs.factors.gp_factor import GPFactor
@@ -17,7 +26,7 @@ class StochGPMP:
             dt=None,
             n_dof=None,
             step_size=1.,
-            temp=1.,
+            temperature=1.,
             start_state=None,
             multi_goal_states=None,
             initial_particle_means=None,
@@ -30,6 +39,7 @@ class StochGPMP:
             sigma_gp_sample=None,
             seed=None,
             tensor_args=None,
+            **kwargs
     ):
         if tensor_args is None:
             tensor_args = {'device': torch.device('cpu'), 'dtype': torch.float32}
@@ -54,7 +64,7 @@ class StochGPMP:
         self.num_samples = num_samples
         self.opt_iters = opt_iters
         self.step_size = step_size
-        self.temp = temp
+        self.temperature = temperature
         self.sigma_start_init = sigma_start_init
         self.sigma_start_sample = sigma_start_sample
         self.sigma_goal_init = sigma_goal_init
@@ -202,7 +212,7 @@ class StochGPMP:
         # Add cost from importance-sampling ratio
         V  = self.state_samples.view(-1, self.num_samples, self.traj_len * self.d_state_opt)  # flatten trajectories
         U = self.particle_means.view(-1, 1, self.traj_len * self.d_state_opt)
-        costs += self.temp * (V @ self.Sigma_inv @ U.transpose(1, 2)).squeeze(2)
+        costs += self.temperature * (V @ self.Sigma_inv @ U.transpose(1, 2)).squeeze(2)
         return costs
 
     def sample_and_eval(self, **observation):
@@ -230,8 +240,7 @@ class StochGPMP:
         )
 
     def _update_distribution(self, costs, traj_samples):
-
-        self._weights = torch.softmax(-costs / self.temp, dim=1)
+        self._weights = torch.softmax( -costs / self.temperature, dim=1)
         self._weights = self._weights.reshape(-1, self.num_samples, 1, 1)
 
         # sum over particles
@@ -321,7 +330,7 @@ class GPMP:
             dt=None,
             n_dof=None,
             step_size=1.,
-            temp=1.,
+            temperature=1.,
             start_state=None,
             multi_goal_states=None,
             cost=None,
@@ -335,6 +344,7 @@ class GPMP:
             seed=None,
             solver_params=None,
             tensor_args=None,
+            **kwargs
     ):
         if tensor_args is None:
             tensor_args = {'device': torch.device('cpu'), 'dtype': torch.float32}
@@ -358,7 +368,7 @@ class GPMP:
         self.num_particles = num_particles_per_goal * self.num_goals
         self.opt_iters = opt_iters
         self.step_size = step_size
-        self.temp = temp
+        self.temperature = temperature
         self.sigma_start_init = sigma_start_init
         self.sigma_start_sample = sigma_start_sample
         self.sigma_goal = sigma_goal
