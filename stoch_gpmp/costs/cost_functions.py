@@ -17,6 +17,9 @@ class Cost(ABC):
     def set_cost_factors(self):
         pass
 
+    def __call__(self, trajs, **observation):
+        return self.eval(trajs, **observation)
+
     @abstractmethod
     def eval(self, trajs, **observation):
         pass
@@ -51,7 +54,7 @@ class CostComposite(Cost):
         costs = 0
 
         for cost in self.cost_list:
-            costs += cost.eval(trajs, x_trajs=x_trajs, **observation)
+            costs += cost(trajs, x_trajs=x_trajs, **observation)
 
         return costs
 
