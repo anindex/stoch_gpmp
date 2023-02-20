@@ -9,7 +9,7 @@ from robot_envs.base_envs.pointmass_env_base import PointMassEnvBase
 from torch_planning_objectives.fields.occupancy_map.map_generator import generate_obstacle_map
 from stoch_gpmp.planner import StochGPMP
 from stoch_gpmp.costs.cost_functions import CostCollision, CostComposite, CostGP, CostGoalPrior
-from torch_planning_objectives.fields.primitive_distance_fields import Sphere
+from torch_planning_objectives.fields.primitive_distance_fields import SphereField
 
 
 if __name__ == "__main__":
@@ -21,10 +21,10 @@ if __name__ == "__main__":
 
     # -------------------------------- Environment ---------------------------------
     obst_primitives_l = [
-        Sphere([[0., 0.]],
-               [1.0],
-               tensor_args=tensor_args
-               )
+        SphereField([[0., 0.]],
+                    [1.0],
+                    tensor_args=tensor_args
+                    )
     ]
 
     env = PointMassEnvBase(
