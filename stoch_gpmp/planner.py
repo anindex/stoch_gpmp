@@ -6,8 +6,11 @@ Re-factored from original MultiGPPI code: https://github.com/sashalambert/mpc_tr
 __author__ = "Alexander Lambert"
 __license__ = "MIT"
 
+import time
 
 import torch
+
+from mp_baselines.planners.utils import elapsed_time
 from stoch_gpmp.costs.factors.mp_priors_multi import MultiMPPrior
 from stoch_gpmp.costs.factors.gp_factor import GPFactor
 from stoch_gpmp.costs.factors.unary_factor import UnaryFactor
@@ -256,13 +259,18 @@ class StochGPMP:
     def optimize(
             self,
             opt_iters=None,
+            debug=False,
             **observation
     ):
 
         if opt_iters is None:
             opt_iters = self.opt_iters
 
+        start_time = time.time()
+
         for opt_step in range(opt_iters):
+            start_time_iter = time.time()
+
             with torch.no_grad():
                 (control_samples,
                  state_trajectories,
@@ -271,6 +279,11 @@ class StochGPMP:
                  costs,) = self.sample_and_eval(**observation)
 
                 approx_grad = self._update_distribution(costs, self.state_samples)
+
+            if debug and opt_step % 50 == 0:
+                self.print_info(opt_step, opt_iters, start_time_iter, start_time, costs)
+
+        self.print_info(opt_step, opt_iters, start_time_iter, start_time, costs)
 
         self._recent_control_samples = control_samples
         self._recent_control_particles = control_particles
@@ -317,6 +330,12 @@ class StochGPMP:
             position_seq,
             velocity_seq,
         )
+
+    def print_info(self, iteration, max_iterations, start_time_iter, start_time, costs):
+        print(f'Iteration: {iteration:5}/{max_iterations:5} '
+              f'| Iter Time: {elapsed_time(start_time_iter):.3f}'
+              f'| Total Time: {elapsed_time(start_time):.3f} '
+              f'| Cost: {costs.sum(-1).mean():.6f}')
 
 
 

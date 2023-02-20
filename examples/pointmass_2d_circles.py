@@ -30,7 +30,7 @@ if __name__ == "__main__":
     env = PointMassEnvBase(
         q_min=(-10, -10),
         q_max=(10, 10),
-        task_space_bounds=((-10., 10.), (-10., 10.), (-10., 10.)),
+        work_space_bounds=((-10., 10.), (-10., 10.), (-10., 10.)),
         obst_primitives_l=obst_primitives_l,
         tensor_args=tensor_args
     )
