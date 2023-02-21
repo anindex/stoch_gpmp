@@ -8,6 +8,7 @@ __license__ = "MIT"
 
 import time
 
+import einops
 import torch
 
 from mp_baselines.planners.utils import elapsed_time
@@ -281,9 +282,8 @@ class StochGPMP:
                 approx_grad = self._update_distribution(costs, self.state_samples)
 
             if debug and opt_step % 50 == 0:
-                self.print_info(opt_step, opt_iters, start_time_iter, start_time, costs)
-
-        self.print_info(opt_step, opt_iters, start_time_iter, start_time, costs)
+                print_info(opt_step, opt_iters, start_time_iter, start_time, costs)
+        print_info(opt_step, opt_iters, start_time_iter, start_time, costs)
 
         self._recent_control_samples = control_samples
         self._recent_control_particles = control_particles
@@ -314,10 +314,10 @@ class StochGPMP:
     def get_recent_samples(self):
         return (
             self._recent_control_samples.detach().clone(),
-            self._recent_control_particles.detach().clone(),
+            # self._recent_control_particles.detach().clone(),
             self._recent_state_trajectories.detach().clone(),
-            self._recent_state_particles.detach().clone(),
-            self._recent_weights.detach().clone(),
+            # self._recent_state_particles.detach().clone(),
+            # self._recent_weights.detach().clone(),
         )
 
     def sample_trajectories(self, num_samples_per_particle):
@@ -330,12 +330,6 @@ class StochGPMP:
             position_seq,
             velocity_seq,
         )
-
-    def print_info(self, iteration, max_iterations, start_time_iter, start_time, costs):
-        print(f'Iteration: {iteration:5}/{max_iterations:5} '
-              f'| Iter Time: {elapsed_time(start_time_iter):.3f}'
-              f'| Total Time: {elapsed_time(start_time):.3f} '
-              f'| Cost: {costs.sum(-1).mean():.6f}')
 
 
 
@@ -526,14 +520,23 @@ class GPMP:
     def optimize(
             self,
             opt_iters=None,
+            debug=False,
             **observation
     ):
 
         if opt_iters is None:
             opt_iters = self.opt_iters
 
+        start_time = time.time()
+
         for opt_step in range(opt_iters):
+            start_time_iter = time.time()
+
             b, K = self._step(**observation)
+
+            if debug and opt_step % 50 == 0:
+                print_info(opt_step, opt_iters, start_time_iter, start_time, self._get_costs(b, K))
+        print_info(opt_step, opt_iters, start_time_iter, start_time, self._get_costs(b, K))
 
         self.costs = self._get_costs(b, K)
 
@@ -584,7 +587,7 @@ class GPMP:
         A_t_K = A.transpose(1, 2) @ K
         A_t_A = A_t_K @ A
         if not trust_region:
-            J_t_J = A_t_A + delta*I
+            J_t_J = A_t_A + delta * I
         else:
             J_t_J = A_t_A + delta * I * torch.diagonal(A_t_A, dim1=1, dim2=2).unsqueeze(-1)
             # Since hessian will be averaged over particles, add diagonal matrix of the mean.
@@ -613,6 +616,17 @@ class GPMP:
         costs = errors.transpose(1, 2) @ w_mat.unsqueeze(0) @ errors
         return costs.reshape(self.num_particles,)
 
+    def get_recent_samples(self):
+        vel = self._recent_control_particles.detach().clone()
+        vel = einops.rearrange(vel, '(m b) h d -> m b h d', m=self.num_goals)
+        pos = self._recent_state_trajectories.detach().clone()
+        pos = einops.rearrange(pos, '(m b) h d -> m b h d', m=self.num_goals)
+
+        return (
+            vel,
+            pos,
+        )
+
     def sample_trajectories(self, num_samples_per_particle):
         self._sample_dist.set_mean(self.particle_means.view(self.num_particles, -1))
         self.state_samples = self._sample_dist.sample(num_samples_per_particle).to(
@@ -623,3 +637,10 @@ class GPMP:
             position_seq,
             velocity_seq,
         )
+
+
+def print_info(iteration, max_iterations, start_time_iter, start_time, costs):
+    print(f'Iteration: {iteration:5}/{max_iterations:5} '
+          f'| Iter Time: {elapsed_time(start_time_iter):.3f}'
+          f'| Total Time: {elapsed_time(start_time):.3f} '
+          f'| Cost: {costs.sum(-1).mean():.6f}')

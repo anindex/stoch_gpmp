@@ -29,7 +29,6 @@ class Cost(ABC):
         pass
 
 
-
 class CostComposite(Cost):
 
     def __init__(
@@ -346,6 +345,7 @@ class CostGoalPrior(Cost):
             A = torch.zeros(batch_size, self.dim, self.dim * self.traj_len, **self.tensor_args)
             b = torch.zeros(batch_size, self.dim, 1, **self.tensor_args)
             K = torch.zeros(batch_size, self.dim, self.dim, **self.tensor_args)
+            # TODO: remove this for loop
             for i in range(self.num_goals):
                 err_g, H_g = self.multi_goal_prior[i].get_error(x[i, :, [-1]])
                 A[i*npg: (i+1)*npg, :, -self.dim:] = H_g
