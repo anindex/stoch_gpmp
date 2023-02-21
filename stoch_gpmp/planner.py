@@ -313,10 +313,10 @@ class StochGPMP:
 
     def get_recent_samples(self):
         return (
-            self._recent_control_samples.detach().clone(),
-            # self._recent_control_particles.detach().clone(),
             self._recent_state_trajectories.detach().clone(),
             # self._recent_state_particles.detach().clone(),
+            self._recent_control_samples.detach().clone(),
+            # self._recent_control_particles.detach().clone(),
             # self._recent_weights.detach().clone(),
         )
 
@@ -623,8 +623,8 @@ class GPMP:
         pos = einops.rearrange(pos, '(m b) h d -> m b h d', m=self.num_goals)
 
         return (
-            vel,
             pos,
+            vel,
         )
 
     def sample_trajectories(self, num_samples_per_particle):
