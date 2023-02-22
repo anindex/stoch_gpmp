@@ -604,10 +604,10 @@ class GPMP:
             return torch.linalg.solve(A, b)
         elif method == 'cholesky':
             l = torch.linalg.cholesky(A)
-            # z = torch.linalg.solve_triangular(l, b, upper=False)
-            # return torch.linalg.solve_triangular(l.mT, z, upper=False)
-            z = torch.triangular_solve(b, l, transpose=False, upper=False)[0]
-            return torch.triangular_solve(z, l, transpose=True, upper=False)[0]
+            z = torch.linalg.solve_triangular(l, b, upper=False)
+            return torch.linalg.solve_triangular(l.mT, z, upper=False)
+            # z = torch.triangular_solve(b, l, transpose=False, upper=False)[0]
+            # return torch.triangular_solve(z, l, transpose=True, upper=False)[0]
         else:
             raise NotImplementedError
 
