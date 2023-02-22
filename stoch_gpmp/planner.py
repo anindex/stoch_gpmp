@@ -18,7 +18,6 @@ from stoch_gpmp.costs.factors.unary_factor import UnaryFactor
 from stoch_gpmp.costs.factors.field_factor import FieldFactor
 
 
-# TODO(an):  add interface for cost factors!!
 class StochGPMP:
 
     def __init__(
@@ -617,10 +616,12 @@ class GPMP:
         return costs.reshape(self.num_particles,)
 
     def get_recent_samples(self):
-        vel = self._recent_control_particles.detach().clone()
-        vel = einops.rearrange(vel, '(m b) h d -> m b h d', m=self.num_goals)
-        pos = self._recent_state_trajectories.detach().clone()
-        pos = einops.rearrange(pos, '(m b) h d -> m b h d', m=self.num_goals)
+        # vel = self._recent_control_particles.detach().clone()
+        # vel = einops.rearrange(vel, '(m b) h d -> m b h d', m=self.num_goals)
+        # pos = self._recent_state_trajectories.detach().clone()
+        # pos = einops.rearrange(pos, '(m b) h d -> m b h d', m=self.num_goals)
+        pos = self.particle_means[..., :self.n_dof].detach().clone()
+        vel = self.particle_means[..., -self.n_dof:].detach().clone()
 
         return (
             pos,
