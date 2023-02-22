@@ -29,7 +29,7 @@ class FieldFactor:
             states = x_trajs[:, self.traj_range[0]:self.traj_range[1]]
         else:
             states = q_trajs[:, self.traj_range[0]:self.traj_range[1], :self.n_dof].reshape(-1, self.n_dof)
-        error = field._compute_collision_cost(states, **observations).reshape(batch, self.length)
+        error = field.compute_collision_cost(states, **observations).reshape(batch, self.length)
 
         if calc_jacobian:
             H = -torch.autograd.grad(error.sum(), q_trajs, retain_graph=True)[0][:, self.traj_range[0]:self.traj_range[1], :self.n_dof]
