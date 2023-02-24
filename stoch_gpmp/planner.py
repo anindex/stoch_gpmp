@@ -345,6 +345,7 @@ class GPMP:
             temperature=1.,
             start_state=None,
             multi_goal_states=None,
+            initial_particle_means=None,
             cost=None,
             sigma_start_init=None,
             sigma_start_sample=None,
@@ -398,7 +399,7 @@ class GPMP:
         self._weights = None
         self._dist = None
 
-        self.reset(start_state, multi_goal_states)
+        self.reset(start_state, multi_goal_states, initial_particle_means=initial_particle_means)
 
     def set_prior_factors(self):
 
@@ -486,6 +487,7 @@ class GPMP:
             self,
             start_state=None,
             multi_goal_states=None,
+            initial_particle_means=None,
     ):
 
         if start_state is not None:
@@ -497,16 +499,19 @@ class GPMP:
         self.set_prior_factors()
 
         # Initialization particles from prior distribution
-        self._init_dist = self.get_dist(
-            self.start_prior_init.K,
-            self.gp_prior_init.Q_inv[0],
-            self.multi_goal_prior_init[0].K if self.goal_directed else None,
-            self.start_state,
-            goal_states=self.multi_goal_states,
-        )
-        self.particle_means = self._init_dist.sample(self.num_particles_per_goal).to(**self.tensor_args)
+        if initial_particle_means is not None:
+            self.particle_means = initial_particle_means
+        else:
+            self._init_dist = self.get_dist(
+                self.start_prior_init.K,
+                self.gp_prior_init.Q_inv[0],
+                self.multi_goal_prior_init[0].K if self.goal_directed else None,
+                self.start_state,
+                goal_states=self.multi_goal_states,
+            )
+            self.particle_means = self._init_dist.sample(self.num_particles_per_goal).to(**self.tensor_args)
+            del self._init_dist  # freeing memory
         self.particle_means = self.particle_means.flatten(0, 1)
-        del self._init_dist  # freeing memory
 
         self._sample_dist = self.get_dist(
             self.start_prior_sample.K,
