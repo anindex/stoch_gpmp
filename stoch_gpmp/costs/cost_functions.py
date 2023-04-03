@@ -17,6 +17,9 @@ class Cost(ABC):
     def set_cost_factors(self):
         pass
 
+    def __call__(self, trajs, **observation):
+        return self.eval(trajs, **observation)
+
     @abstractmethod
     def eval(self, trajs, **observation):
         pass
@@ -24,7 +27,6 @@ class Cost(ABC):
     @abstractmethod
     def get_linear_system(self, trajs, **observation):
         pass
-
 
 
 class CostComposite(Cost):
@@ -51,7 +53,7 @@ class CostComposite(Cost):
         costs = 0
 
         for cost in self.cost_list:
-            costs += cost.eval(trajs, x_trajs=x_trajs, **observation)
+            costs += cost(trajs, x_trajs=x_trajs, **observation)
 
         return costs
 
@@ -93,6 +95,7 @@ class CostGP(Cost):
         dt,
         sigma_params,
         tensor_args,
+        **kwargs
     ):
         super().__init__(n_dof, traj_len)
         self.start_state = start_state
@@ -132,7 +135,7 @@ class CostGP(Cost):
 
         # GP cost
         err_gp = self.gp_prior.get_error(trajs, calc_jacobian=False)
-        w_mat = self.gp_prior.Q_inv[0] # repeated Q_inv
+        w_mat = self.gp_prior.Q_inv[0]  # repeated Q_inv
         w_mat = w_mat.reshape(1, 1, self.dim, self.dim)
         gp_costs = err_gp.transpose(2, 3) @ w_mat @ err_gp
         gp_costs = gp_costs.sum(1)
@@ -163,6 +166,56 @@ class CostGP(Cost):
             K[:, (i+1)*self.dim:(i+2)*self.dim, (i+1)*self.dim:(i+2)*self.dim] = self.gp_prior.Q_inv[[i]]
 
         return A, b, K
+
+
+class CostGPTrajectory(Cost):
+
+    def __init__(
+            self,
+            n_dof,
+            traj_len,
+            start_state,
+            dt,
+            sigma_params,
+            tensor_args,
+            **kwargs
+    ):
+        super().__init__(n_dof, traj_len)
+        self.start_state = start_state
+        self.dt = dt
+
+        self.sigma_gp = sigma_params['sigma_gp']
+        self.tensor_args = tensor_args
+
+        self.set_cost_factors()
+
+    def set_cost_factors(self):
+        # ========= Cost factors ===============
+        self.gp_prior = GPFactor(
+            self.n_dof,
+            self.sigma_gp,
+            self.dt,
+            self.traj_len - 1,
+            self.tensor_args,
+        )
+
+    def eval(self, trajs, x_trajs=None, **observation):
+        # trajs = trajs.reshape(-1, self.traj_len, self.dim)
+
+        # GP cost
+        err_gp = self.gp_prior.get_error(trajs, calc_jacobian=False)
+        w_mat = self.gp_prior.Q_inv[0]  # repeated Q_inv
+        w_mat = w_mat.reshape(1, 1, self.dim, self.dim)
+        gp_costs = err_gp.transpose(2, 3) @ w_mat @ err_gp
+        gp_costs = gp_costs.sum(1)
+        gp_costs = gp_costs.squeeze()
+
+        costs = gp_costs
+
+        return costs
+
+    def get_linear_system(self, trajs, x_trajs=None, **observation):
+        pass
 
 
 class CostCollision(Cost):
@@ -343,6 +396,7 @@ class CostGoalPrior(Cost):
             A = torch.zeros(batch_size, self.dim, self.dim * self.traj_len, **self.tensor_args)
             b = torch.zeros(batch_size, self.dim, 1, **self.tensor_args)
             K = torch.zeros(batch_size, self.dim, self.dim, **self.tensor_args)
+            # TODO: remove this for loop
             for i in range(self.num_goals):
                 err_g, H_g = self.multi_goal_prior[i].get_error(x[i, :, [-1]])
                 A[i*npg: (i+1)*npg, :, -self.dim:] = H_g

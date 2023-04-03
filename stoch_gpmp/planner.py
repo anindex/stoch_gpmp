@@ -6,15 +6,18 @@ Re-factored from original MultiGPPI code: https://github.com/sashalambert/mpc_tr
 __author__ = "Alexander Lambert"
 __license__ = "MIT"
 
+import time
 
+import einops
 import torch
+
+from mp_baselines.planners.utils import elapsed_time
 from stoch_gpmp.costs.factors.mp_priors_multi import MultiMPPrior
 from stoch_gpmp.costs.factors.gp_factor import GPFactor
 from stoch_gpmp.costs.factors.unary_factor import UnaryFactor
 from stoch_gpmp.costs.factors.field_factor import FieldFactor
 
 
-# TODO(an):  add interface for cost factors!!
 class StochGPMP:
 
     def __init__(
@@ -37,7 +40,7 @@ class StochGPMP:
             sigma_goal_sample=None,
             sigma_gp_init=None,
             sigma_gp_sample=None,
-            seed=0,
+            seed=None,
             tensor_args=None,
             **kwargs
     ):
@@ -45,7 +48,8 @@ class StochGPMP:
             tensor_args = {'device': torch.device('cpu'), 'dtype': torch.float32}
         self.tensor_args = tensor_args
 
-        torch.manual_seed(seed)
+        if seed is not None:
+            torch.manual_seed(seed)
 
         self.n_dof = n_dof
         self.d_state_opt = 2 * self.n_dof
@@ -239,27 +243,33 @@ class StochGPMP:
         )
 
     def _update_distribution(self, costs, traj_samples):
-
         self._weights = torch.softmax( -costs / self.temperature, dim=1)
         self._weights = self._weights.reshape(-1, self.num_samples, 1, 1)
 
+        # sum over particles
+        approx_grad = (self._weights * (traj_samples - self.particle_means.unsqueeze(1))).sum(1)
+
         self.particle_means.add_(
-            self.step_size * (
-                self._weights * (traj_samples - self.particle_means.unsqueeze(1))
-            ).sum(1)
+            self.step_size * approx_grad
         )
         self._sample_dist.set_mean(self.particle_means.view(self.num_particles, -1))
+
+        return approx_grad
 
     def optimize(
             self,
             opt_iters=None,
+            debug=False,
             **observation
     ):
 
         if opt_iters is None:
             opt_iters = self.opt_iters
 
+        start_time = time.time()
+
         for opt_step in range(opt_iters):
+            start_time_iter = time.time()
 
             with torch.no_grad():
                 (control_samples,
@@ -268,7 +278,11 @@ class StochGPMP:
                  state_particles,
                  costs,) = self.sample_and_eval(**observation)
 
-                self._update_distribution(costs, self.state_samples)
+                approx_grad = self._update_distribution(costs, self.state_samples)
+
+            if debug and opt_step % 50 == 0:
+                print_info(opt_step, opt_iters, start_time_iter, start_time, costs)
+        print_info(opt_step, opt_iters, start_time_iter, start_time, costs)
 
         self._recent_control_samples = control_samples
         self._recent_control_particles = control_particles
@@ -282,6 +296,7 @@ class StochGPMP:
             state_trajectories,
             control_samples,
             costs,
+            approx_grad
         )
 
     def _get_traj(self, mode='best'):
@@ -297,11 +312,11 @@ class StochGPMP:
 
     def get_recent_samples(self):
         return (
-            self._recent_control_samples.detach().clone(),
-            self._recent_control_particles.detach().clone(),
             self._recent_state_trajectories.detach().clone(),
-            self._recent_state_particles.detach().clone(),
-            self._recent_weights.detach().clone(),
+            # self._recent_state_particles.detach().clone(),
+            self._recent_control_samples.detach().clone(),
+            # self._recent_control_particles.detach().clone(),
+            # self._recent_weights.detach().clone(),
         )
 
     def sample_trajectories(self, num_samples_per_particle):
@@ -330,6 +345,7 @@ class GPMP:
             temperature=1.,
             start_state=None,
             multi_goal_states=None,
+            initial_particle_means=None,
             cost=None,
             sigma_start_init=None,
             sigma_start_sample=None,
@@ -338,7 +354,7 @@ class GPMP:
             sigma_goal=None,
             sigma_gp_init=None,
             sigma_gp_sample=None,
-            seed=0,
+            seed=None,
             solver_params=None,
             tensor_args=None,
             **kwargs
@@ -347,7 +363,8 @@ class GPMP:
             tensor_args = {'device': torch.device('cpu'), 'dtype': torch.float32}
         self.tensor_args = tensor_args
 
-        torch.manual_seed(seed)
+        if seed is not None:
+            torch.manual_seed(seed)
 
         self.n_dof = n_dof
         self.d_state_opt = 2 * self.n_dof
@@ -382,7 +399,7 @@ class GPMP:
         self._weights = None
         self._dist = None
 
-        self.reset(start_state, multi_goal_states)
+        self.reset(start_state, multi_goal_states, initial_particle_means=initial_particle_means)
 
     def set_prior_factors(self):
 
@@ -470,6 +487,7 @@ class GPMP:
             self,
             start_state=None,
             multi_goal_states=None,
+            initial_particle_means=None,
     ):
 
         if start_state is not None:
@@ -481,16 +499,19 @@ class GPMP:
         self.set_prior_factors()
 
         # Initialization particles from prior distribution
-        self._init_dist = self.get_dist(
-            self.start_prior_init.K,
-            self.gp_prior_init.Q_inv[0],
-            self.multi_goal_prior_init[0].K if self.goal_directed else None,
-            self.start_state,
-            goal_states=self.multi_goal_states,
-        )
-        self.particle_means = self._init_dist.sample(self.num_particles_per_goal).to(**self.tensor_args)
+        if initial_particle_means is not None:
+            self.particle_means = initial_particle_means
+        else:
+            self._init_dist = self.get_dist(
+                self.start_prior_init.K,
+                self.gp_prior_init.Q_inv[0],
+                self.multi_goal_prior_init[0].K if self.goal_directed else None,
+                self.start_state,
+                goal_states=self.multi_goal_states,
+            )
+            self.particle_means = self._init_dist.sample(self.num_particles_per_goal).to(**self.tensor_args)
+            del self._init_dist  # freeing memory
         self.particle_means = self.particle_means.flatten(0, 1)
-        del self._init_dist  # freeing memory
 
         self._sample_dist = self.get_dist(
             self.start_prior_sample.K,
@@ -503,14 +524,23 @@ class GPMP:
     def optimize(
             self,
             opt_iters=None,
+            debug=False,
             **observation
     ):
 
         if opt_iters is None:
             opt_iters = self.opt_iters
 
+        start_time = time.time()
+
         for opt_step in range(opt_iters):
+            start_time_iter = time.time()
+
             b, K = self._step(**observation)
+
+            if debug and opt_step % 50 == 0:
+                print_info(opt_step, opt_iters, start_time_iter, start_time, self._get_costs(b, K))
+        print_info(opt_step, opt_iters, start_time_iter, start_time, self._get_costs(b, K))
 
         self.costs = self._get_costs(b, K)
 
@@ -561,7 +591,7 @@ class GPMP:
         A_t_K = A.transpose(1, 2) @ K
         A_t_A = A_t_K @ A
         if not trust_region:
-            J_t_J = A_t_A + delta*I
+            J_t_J = A_t_A + delta * I
         else:
             J_t_J = A_t_A + delta * I * torch.diagonal(A_t_A, dim1=1, dim2=2).unsqueeze(-1)
             # Since hessian will be averaged over particles, add diagonal matrix of the mean.
@@ -579,16 +609,29 @@ class GPMP:
             return torch.linalg.solve(A, b)
         elif method == 'cholesky':
             l = torch.linalg.cholesky(A)
-            # z = torch.linalg.solve_triangular(l, b, upper=False)
-            # return torch.linalg.solve_triangular(l.mT, z, upper=False)
-            z = torch.triangular_solve(b, l, transpose=False, upper=False)[0]
-            return torch.triangular_solve(z, l, transpose=True, upper=False)[0]
+            z = torch.linalg.solve_triangular(l, b, upper=False)
+            return torch.linalg.solve_triangular(l.mT, z, upper=False)
+            # z = torch.triangular_solve(b, l, transpose=False, upper=False)[0]
+            # return torch.triangular_solve(z, l, transpose=True, upper=False)[0]
         else:
             raise NotImplementedError
 
     def _get_costs(self, errors, w_mat):
         costs = errors.transpose(1, 2) @ w_mat.unsqueeze(0) @ errors
         return costs.reshape(self.num_particles,)
+
+    def get_recent_samples(self):
+        # vel = self._recent_control_particles.detach().clone()
+        # vel = einops.rearrange(vel, '(m b) h d -> m b h d', m=self.num_goals)
+        # pos = self._recent_state_trajectories.detach().clone()
+        # pos = einops.rearrange(pos, '(m b) h d -> m b h d', m=self.num_goals)
+        pos = self.particle_means[..., :self.n_dof].detach().clone()
+        vel = self.particle_means[..., -self.n_dof:].detach().clone()
+
+        return (
+            pos,
+            vel,
+        )
 
     def sample_trajectories(self, num_samples_per_particle):
         self._sample_dist.set_mean(self.particle_means.view(self.num_particles, -1))
@@ -600,3 +643,10 @@ class GPMP:
             position_seq,
             velocity_seq,
         )
+
+
+def print_info(iteration, max_iterations, start_time_iter, start_time, costs):
+    print(f'Iteration: {iteration:5}/{max_iterations:5} '
+          f'| Iter Time: {elapsed_time(start_time_iter):.3f}'
+          f'| Total Time: {elapsed_time(start_time):.3f} '
+          f'| Cost: {costs.sum(-1).mean():.6f}')
