@@ -18,7 +18,7 @@ if __name__ == "__main__":
     dt = 0.02
     num_particles_per_goal = 5
     num_samples = 128
-    seed = 11
+    seed = int(time.time())
     start_q = torch.Tensor([-9, -9]).to(**tensor_args)
     start_state = torch.cat((start_q, torch.zeros(2, **tensor_args)))
 
@@ -39,7 +39,7 @@ if __name__ == "__main__":
         obst_list=obst_list,
         cell_size=cell_size,
         random_gen=True,
-        num_obst=10,
+        num_obst=15,
         rand_limits=[[-7.5, 7.5], [-7.5, 7.5]],
         rand_rect_shape=[2, 2],
         tensor_args=tensor_args,

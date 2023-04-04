@@ -142,6 +142,21 @@ class StochGPMP:
                     )
                 )
 
+    def const_vel_trajectories(
+        self,
+        start_state,
+        multi_goal_states,
+    ):
+        traj_dim = (multi_goal_states.shape[0], self.num_particles_per_goal, self.traj_len, self.d_state_opt)
+        state_traj = torch.zeros(traj_dim, **self.tensor_args)
+        mean_vel = (multi_goal_states[:, :self.n_dof] - start_state[:self.n_dof]) / (self.traj_len * self.dt)
+        for i in range(self.traj_len):
+            interp_state = start_state[:self.n_dof] * (self.traj_len - i - 1) / (self.traj_len - 1) \
+                                  + multi_goal_states[:, :self.n_dof] * i / (self.traj_len - 1)
+            state_traj[:, :, i, :self.n_dof] = interp_state.unsqueeze(1)
+        state_traj[:, :, :, self.n_dof:] = mean_vel.unsqueeze(1).unsqueeze(1)
+        return state_traj
+
     def get_prior_dist(
             self,
             start_K,
@@ -182,7 +197,13 @@ class StochGPMP:
         self.set_prior_factors()
 
         if initial_particle_means is not None:
-            self.particle_means = initial_particle_means
+            if initial_particle_means == 'const_vel':
+                self.particle_means = self.const_vel_trajectories(
+                    self.start_state,
+                    self.multi_goal_states,
+                )
+            else:
+                self.particle_means = initial_particle_means
         else:
             # Initialization particles from prior distribution
             self._init_dist = self.get_prior_dist(
