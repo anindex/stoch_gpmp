@@ -3,8 +3,8 @@ import time
 import random
 import matplotlib.pyplot as plt
 
-from dplan.motion_planners.utils import elapsed_time
-from experiment_launcher.utils import fix_random_seed
+# from dplan.motion_planners.utils import elapsed_time
+# from experiment_launcher.utils import fix_random_seed
 from robot_envs.base_envs.pointmass_env_base import PointMassEnvBase
 from torch_planning_objectives.fields.occupancy_map.map_generator import generate_obstacle_map
 from stoch_gpmp.planner import StochGPMP
@@ -14,7 +14,7 @@ from torch_planning_objectives.fields.primitive_distance_fields import SphereFie
 
 if __name__ == "__main__":
     seed = 0
-    fix_random_seed(seed)
+    # fix_random_seed(seed)
 
     device = 'cuda'
     tensor_args = {'device': device, 'dtype': torch.float64}
@@ -117,9 +117,9 @@ if __name__ == "__main__":
         if i == 1 or i % 50 == 0:
             print(i)
             print(f'Time(s) per iter: {time_finish - time_start:.4f} sec')
-            controls, _, trajectories, trajectory_means, weights = planner.get_recent_samples()
+            trajectories, controls = planner.get_recent_samples()
             traj_history.append(trajectories)
-    print(f'Planning time: {elapsed_time(start_time)}')
+    # print(f'Planning time: {elapsed_time(start_time)}')
 
     # ---------------------------------------------------------------------------
     # Plotting
