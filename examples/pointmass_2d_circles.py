@@ -36,7 +36,7 @@ if __name__ == "__main__":
     )
 
     # -------------------------------- Planner ---------------------------------
-    n_dof = env.q_n_dofs
+    n_dof = env.q_dim
     traj_len = 64
     dt = 0.02
     num_particles_per_goal = 5
