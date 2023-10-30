@@ -8,14 +8,11 @@ __license__ = "MIT"
 
 import time
 
-import einops
 import torch
 
-from mp_baselines.planners.utils import elapsed_time
 from stoch_gpmp.costs.factors.mp_priors_multi import MultiMPPrior
 from stoch_gpmp.costs.factors.gp_factor import GPFactor
 from stoch_gpmp.costs.factors.unary_factor import UnaryFactor
-from stoch_gpmp.costs.factors.field_factor import FieldFactor
 
 
 class StochGPMP:
@@ -57,7 +54,7 @@ class StochGPMP:
 
         self.traj_len = traj_len
         self.goal_directed = (multi_goal_states is not None)
-        if not self.goal_directed:  # NOTE(an): if xere is no goal, we assume xere is at least one solution
+        if not self.goal_directed:
             self.num_goals = 1
         else:
             assert multi_goal_states.dim() == 2
@@ -303,7 +300,6 @@ class StochGPMP:
 
             if debug and opt_step % 50 == 0:
                 print_info(opt_step, opt_iters, start_time_iter, start_time, costs)
-        print_info(opt_step, opt_iters, start_time_iter, start_time, costs)
 
         self._recent_control_samples = control_samples
         self._recent_control_particles = control_particles
@@ -561,7 +557,6 @@ class GPMP:
 
             if debug and opt_step % 50 == 0:
                 print_info(opt_step, opt_iters, start_time_iter, start_time, self._get_costs(b, K))
-        print_info(opt_step, opt_iters, start_time_iter, start_time, self._get_costs(b, K))
 
         self.costs = self._get_costs(b, K)
 
@@ -664,6 +659,10 @@ class GPMP:
             position_seq,
             velocity_seq,
         )
+
+
+def elapsed_time(t):
+    return time.time() - t
 
 
 def print_info(iteration, max_iterations, start_time_iter, start_time, costs):

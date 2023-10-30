@@ -3,8 +3,8 @@ import time
 import random
 import matplotlib.pyplot as plt
 
-from torch_planning_objectives.fields.occupancy_map.map_generator import generate_obstacle_map
-from stoch_gpmp.planner import StochGPMP
+from stoch_gpmp.envs.map_generator import generate_obstacle_map
+from stoch_gpmp.planner import StochGPMP, print_info
 from stoch_gpmp.costs.cost_functions import CostCollision, CostComposite, CostGP, CostGoalPrior
 
 
@@ -87,7 +87,7 @@ if __name__ == "__main__":
         step_size=0.5,
         sigma_start_init=1e-3,
         sigma_goal_init=1e-3,
-        sigma_gp_init=50.,
+        sigma_gp_init=20.,
         sigma_start_sample=1e-3,
         sigma_goal_sample=1e-3,
         sigma_gp_sample=3,
@@ -100,15 +100,13 @@ if __name__ == "__main__":
     #---------------------------------------------------------------------------
     # Optimize
     opt_iters = 500
-
+    start_time = time.time()
     traj_history = []
     for i in range(opt_iters + 1):
-        time_start = time.time()
-        planner.optimize(**obs)
-        time_finish = time.time()
+        start_time_iter = time.time()
+        _, _, _, _, costs, _ = planner.optimize(**obs)
         if i == 1 or i % 50 == 0:
-            print(i)
-            print(f'Time(s) per iter: {time_finish - time_start:.4f} sec')
+            print_info(i, opt_iters, start_time_iter, start_time, costs)
             trajectories, controls = planner.get_recent_samples()
             traj_history.append(trajectories)
 

@@ -10,16 +10,8 @@ This library implements Stochastic Gaussian Process Motion Planning algorithm in
 
 ## Installation
 
-Create a conda environment
-```azure
-conda env create -f environment.yml
-```
-Activate the environment and install the library
-```azure
-conda activate planning_env && pip install -e .
-```
+Activate your Python/Conda environment and install
 
-Or simply just (and install PyTorch separately)
 ```azure
 pip install -e .
 ```
@@ -46,7 +38,7 @@ If you encounter the exception regarding Positive-Definite matrix while initiali
 
 [1] Urain, J.* ; Le, A.T.* ; Lambert, A.*; Chalvatzaki, G.; Boots, B.; Peters, J. (2022). Learning Implicit Priors for Motion Optimization, IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS).  
 
-If you use this planner, please cite us as below :-)
+If you found this work useful, please consider cite us as below :-)
 ```
 @inproceedings{iros2022_ebmtrajopt,
   author =		 "Urain, J. and  Le, A.T. and  Lambert, A. and  Chalvatzaki, G. and  Boots, B. and  Peters, J.",
